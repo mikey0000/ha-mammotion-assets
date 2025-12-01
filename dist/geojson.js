@@ -86,7 +86,8 @@ export default (L, Plugin, Logger) => {
             style: feature => this._getFeatureStyle(feature),
             pointToLayer: (feature, latlng) => {
               return this._createRotatedMarker(feature, latlng);
-            }
+            },
+            onEachFeature: (feature, layer) => this._bindFeatureEvents(feature, layer)
           })
 
           this.rtk_and_dock.addTo(this.map);
@@ -117,7 +118,108 @@ export default (L, Plugin, Logger) => {
     }
 
     _bindFeatureEvents(feature, layer) {
-      // Add popups or other events if needed later
+      // Build a lawn-mower themed popup containing the name/title and area (m²)
+      try {
+        const props = feature.properties || {};
+        const name = props.Name || props.title || props.name || "";
+        const area = props.area != null ? Math.ceil(props.area) : null;
+
+        // If there's nothing to show, don't bind a popup
+        if (!name && area == null) return;
+
+        const content = this._createPopupContent({ name, area, type: props.type_name, props });
+
+        // Bind popup with a custom class for styling
+        layer.bindPopup(content, {
+          className: 'geojson-popup lawnmower-popup',
+          minWidth: 180,
+          maxWidth: 320,
+          closeButton: true
+        });
+
+        // Nice UX: open popup on hover for markers / polygons, click for lines
+        const geomType = feature.geometry?.type;
+        if (geomType === 'Point' || geomType === 'Polygon' || geomType === 'MultiPolygon') {
+          layer.on('mouseover', function () { this.openPopup(); });
+          layer.on('mouseout', function () { this.closePopup(); });
+        } else {
+          // For LineString/paths keep click behavior
+          layer.on('click', function () { this.openPopup(); });
+        }
+      } catch (e) {
+        Logger.debug("[GeoJsonLoader] _bindFeatureEvents error:", e);
+      }
+    }
+
+    _createPopupContent({ name, area, type, props }) {
+      // Simple, compact HTML for the popup. Emoji + green theme for lawn mower feel.
+      const title = name ? `<div class="lm-title">🤖 ${this._escapeHtml(name)}</div>` : '';
+      const areaLine = area != null ? `<div class="lm-area">🌿 Area: <strong>${area} m²</strong></div>` : '';
+      // const extra = props?.description ? `<div class="lm-desc">${this._escapeHtml(props.description)}</div>` : '';
+      const footer = `<div class="lm-footer">Type: ${this._escapeHtml(type || '—')}</div>`;
+
+      return `
+        <div class="lm-popup">
+          ${title}
+          ${areaLine}
+          ${footer}
+        </div>
+      `;
+    }
+
+    _escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    _ensurePopupStyle() {
+      if (document.getElementById('geojson-lawnmower-style')) return;
+      const css = `
+        .lawnmower-popup .lm-popup { 
+          font-family: "Helvetica Neue", Arial, sans-serif;
+          color: #08301a;
+          background: linear-gradient(180deg, #e8f6ea 0%, #d8f0d8 100%);
+          border: 2px solid #8ad08a;
+          border-radius: 8px;
+          padding: 10px 12px;
+          box-shadow: 0 6px 18px rgba(3,40,15,0.2);
+        }
+        .lawnmower-popup .lm-title {
+          font-weight: 700;
+          font-size: 15px;
+          margin-bottom: 6px;
+          display:flex;
+          align-items:center;
+          gap:8px;
+        }
+        .lawnmower-popup .lm-area {
+          font-size: 13px;
+          margin-bottom: 6px;
+        }
+        .lawnmower-popup .lm-desc {
+          font-size: 12px;
+          color: #13431f;
+          margin-bottom: 8px;
+        }
+        .lawnmower-popup .lm-footer {
+          font-size: 11px;
+          color: #14522a;
+          opacity: 0.9;
+          border-top: 1px dashed rgba(10,60,20,0.08);
+          padding-top: 6px;
+        }
+        /* Ensure popup text wraps nicely */
+        .leaflet-popup-content { padding: 0; }
+      `;
+      const style = document.createElement('style');
+      style.id = 'geojson-lawnmower-style';
+      style.innerHTML = css;
+      document.head.appendChild(style);
     }
 
     _offsetGeoJson(geojson, offsetLatMeters, offsetLonMeters) {
@@ -307,7 +409,6 @@ export default (L, Plugin, Logger) => {
       L.geoJSON(geoJsonData, {
         pointToLayer: (feature, latlng) => {
           let name = feature.properties?.Name || feature.properties?.title;
-          name = `${name} ${Math.ceil(feature.properties?.area)}m2`;
           const type = feature.properties?.type_name;
           if (type === "label" && name) {
             const labelMarker = this._createLabelMarker(name, latlng);
@@ -320,7 +421,7 @@ export default (L, Plugin, Logger) => {
           // Handle polygons with Name (no label point)
           if (feature.geometry.type === "Polygon" && feature.properties?.Name) {
             const center = layer.getBounds().getCenter();
-            const name = `${feature.properties.Name} ${Math.ceil(feature.properties?.area)}m2`;
+            const name = feature.properties.Name;
             const labelMarker = this._createLabelMarker(name, center);
             this.labelLayer.addLayer(labelMarker);
             this._labelMarkers.push(labelMarker);
