@@ -19,100 +19,158 @@ export default (L, Plugin, Logger) => {
           return;
         }
 
-        let geoJsonData = await this._loadGeoJsonData();
-        if (!geoJsonData || !this._isMounted) return;
+        const entityId = this.options.entity_id || this.options.entity;
+        let geoJsonData = await this._loadGeoJsonData(entityId);
+        let mowPathGeoJsonData = await this._loadMowPathGeoJsonData(entityId);
 
-        const offsetLat = this.options.offset_lat || 0;
-        const offsetLon = this.options.offset_lon || 0;
+        if (geoJsonData) geoJsonData = JSON.parse(JSON.stringify(geoJsonData));
+        if (mowPathGeoJsonData) mowPathGeoJsonData = JSON.parse(JSON.stringify(mowPathGeoJsonData));
+
+        if ((!geoJsonData && !mowPathGeoJsonData) || !this._isMounted) return;
+
+        const offsetLat = Number(this.options.offset_lat) || 0;
+        const offsetLon = Number(this.options.offset_lon) || 0;
         if (offsetLat !== 0 || offsetLon !== 0) {
-          geoJsonData = this._offsetGeoJson(geoJsonData, offsetLat, offsetLon);
+          if (geoJsonData) geoJsonData = this._offsetGeoJson(geoJsonData, offsetLat, offsetLon);
+          if (mowPathGeoJsonData) mowPathGeoJsonData = this._offsetGeoJson(mowPathGeoJsonData, offsetLat, offsetLon);
           Logger.debug(`[GeoJsonLoader] Applied offset: ${offsetLat}m north/south, ${offsetLon}m east/west`);
         }
 
-        const rotationDeg = this.options.rotation_deg || 0;
+        const rotationDeg = Number(this.options.rotation_deg) || 0;
         if (rotationDeg !== 0) {
-          let originLat = this.options.rotation_origin_lat;
-          let originLon = this.options.rotation_origin_lon;
+          let originLat = this.options.rotation_origin_lat != null ? Number(this.options.rotation_origin_lat) : null;
+          let originLon = this.options.rotation_origin_lon != null ? Number(this.options.rotation_origin_lon) : null;
 
           // Auto-calculate centroid if not given
-          if (originLat == null || originLon == null) {
-            const center = this._getGeoJsonCenter(geoJsonData);
+          if ((originLat == null || originLon == null) && (geoJsonData || mowPathGeoJsonData)) {
+            const center = this._getGeoJsonCenter(geoJsonData || mowPathGeoJsonData);
             originLat = center.lat;
             originLon = center.lon;
             Logger.debug(`[GeoJsonLoader] Calculated rotation origin: (${originLat}, ${originLon})`);
           }
-          geoJsonData = this._rotateGeoJson(geoJsonData, rotationDeg, originLat, originLon);
-          Logger.debug(`[GeoJsonLoader] Applied rotation: ${rotationDeg}° around (${originLat}, ${originLon})`);
-}
-
-        // Main GeoJSON layer
-        this.layer = L.geoJSON(geoJsonData, {
-          style: (feature) => this._getFeatureStyle(feature),
-          onEachFeature: (feature, layer) => this._bindFeatureEvents(feature, layer),
-          pointToLayer: (feature, latlng) => {
-            const type = feature.properties?.type_name;
-            if (type === "label") return null;
-            return L.circleMarker(latlng, { radius: 0, opacity: 0 });
-          },
-          filter: (feature) => feature.properties?.type_name !== "path" // Exclude paths from main layer
-        });
+          if (originLat != null && originLon != null) {
+            if (geoJsonData) geoJsonData = this._rotateGeoJson(geoJsonData, rotationDeg, originLat, originLon);
+            if (mowPathGeoJsonData) mowPathGeoJsonData = this._rotateGeoJson(mowPathGeoJsonData, rotationDeg, originLat, originLon);
+            Logger.debug(`[GeoJsonLoader] Applied rotation: ${rotationDeg}° around (${originLat}, ${originLon})`);
+          }
+        }
 
         if (this._isMounted && this.map.getContainer().parentNode) {
-          this.layer.addTo(this.map);
-          Logger.debug("[GeoJsonLoader] Layer added successfully");
+          if (geoJsonData) {
+            // Main GeoJSON layer
+            this.layer = L.geoJSON(geoJsonData, {
+              style: (feature) => this._getFeatureStyle(feature),
+              onEachFeature: (feature, layer) => this._bindFeatureEvents(feature, layer),
+              pointToLayer: (feature, latlng) => {
+                const type = feature.properties?.type_name;
+                if (type === "label") return null;
+                return L.circleMarker(latlng, { radius: 0, opacity: 0 });
+              },
+              filter: (feature) => feature.properties?.type_name !== "path" // Exclude paths from main layer
+            });
+            this.layer.addTo(this.map);
+            Logger.debug("[GeoJsonLoader] Main Layer added successfully");
 
-          // Road base layer
-          this.roadLayer = L.geoJSON(geoJsonData, {
-            filter: f => f.properties?.type_name === "path",
-            style: feature => this._getFeatureStyle(feature)
-          });
-          this.roadLayer.addTo(this.map);
+            // Road base layer
+            this.roadLayer = L.geoJSON(geoJsonData, {
+              filter: f => f.properties?.type_name === "path",
+              style: feature => this._getFeatureStyle(feature)
+            });
+            this.roadLayer.addTo(this.map);
 
-          // Road overlay layer (center line)
-          this.roadOverlayLayer = L.geoJSON(geoJsonData, {
-            filter: f => f.properties?.type_name === "path",
-            style: feature => ({
-              color: feature.properties?.road_center_color || "#000000",
-              weight: 2,
-              opacity: 1.0,
-              dashArray: feature.properties?.dashArray || "8, 8"
-            })
-          });
-          this.roadOverlayLayer.addTo(this.map);
+            // Road overlay layer (center line)
+            this.roadOverlayLayer = L.geoJSON(geoJsonData, {
+              filter: f => f.properties?.type_name === "path",
+              style: feature => ({
+                color: feature.properties?.road_center_color || "#000000",
+                weight: 2,
+                opacity: 1.0,
+                dashArray: feature.properties?.dashArray || "8, 8"
+              })
+            });
+            this.roadOverlayLayer.addTo(this.map);
+          }
 
+          if (mowPathGeoJsonData) {
+            this.mowPathLayer = L.geoJSON(mowPathGeoJsonData, {
+              style: feature => this._getFeatureStyle(feature)
+            });
+            this.mowPathLayer.addTo(this.map);
+            Logger.debug("[GeoJsonLoader] Mow Path Layer added successfully");
+          }
 
-          this.rtk_and_dock = L.geoJSON(geoJsonData, {
-            filter: f => !!f.properties?.iconImage,
-            style: feature => this._getFeatureStyle(feature),
-            pointToLayer: (feature, latlng) => {
-              return this._createRotatedMarker(feature, latlng);
-            },
-            onEachFeature: (feature, layer) => this._bindFeatureEvents(feature, layer)
-          })
+          if (geoJsonData) {
+            this.rtk_and_dock = L.geoJSON(geoJsonData, {
+              filter: f => !!f.properties?.iconImage,
+              style: feature => this._getFeatureStyle(feature),
+              pointToLayer: (feature, latlng) => {
+                return this._createRotatedMarker(feature, latlng);
+              },
+              onEachFeature: (feature, layer) => this._bindFeatureEvents(feature, layer)
+            });
+            this.rtk_and_dock.addTo(this.map);
 
-          this.rtk_and_dock.addTo(this.map);
-
-          // Add text labels
-          this._addTextLabels(geoJsonData);
-
+            // Add text labels
+            this._addTextLabels(geoJsonData);
+          }
         }
       } catch (error) {
         Logger.error("[GeoJsonLoader] Error:", error);
       }
     }
 
-    async _loadGeoJsonData() {
+    async _loadGeoJsonData(entityId) {
       try {
-        if (this.options.url) {
-          const response = await fetch(this.options.url);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          return await response.json();
-        } else if (this.options.data) {
-          return this.options.data;
+        if (!entityId) {
+          Logger.warn("[GeoJsonLoader] No entity_id provided in options");
+          return null;
         }
-        throw new Error("No GeoJSON data provided");
+        const hass = this._hass || this.hass;
+        const response = await hass.callService(
+          "mammotion",
+          "get_geojson",
+          { entity_id: entityId, return_response: true },
+          {},
+          true,
+          true
+        );
+        return response?.response || null;
       } catch (error) {
-        Logger.error("[GeoJsonLoader] Load error:", error);
+        Logger.warn("[GeoJsonLoader] Load error (get_geojson): " + (error.message || error));
+        return null;
+      }
+    }
+
+    async _loadMowPathGeoJsonData(entityId) {
+      try {
+        if (!entityId) {
+          Logger.warn("[GeoJsonLoader] No entity_id provided in options");
+          return null;
+        }
+        const hass = this._hass || this.hass;
+        
+        const serviceData = {
+          entity_id: entityId,
+          return_response: true
+        };
+        
+        if (this.options.erase_by !== undefined) {
+          serviceData.erase_by = this.options.erase_by;
+        } else {
+          serviceData.erase_by = "progress";
+        }
+
+        const response = await hass.callService(
+          "mammotion",
+          "get_mow_path_geojson",
+          serviceData,
+          {},
+          true,
+          true
+        );
+        return response?.response || null;
+      } catch (error) {
+        Logger.warn("[GeoJsonLoader] Load error (get_mow_path_geojson): " + (error.message || error));
         return null;
       }
     }
@@ -261,6 +319,11 @@ export default (L, Plugin, Logger) => {
                 line.map(c => applyOffset(c, c[1]))
               )
             };
+          case "GeometryCollection":
+            return {
+              ...geometry,
+              geometries: geometry.geometries.map(g => offsetCoords(g))
+            };
           default:
             return geometry;
         }
@@ -333,6 +396,11 @@ export default (L, Plugin, Logger) => {
               coordinates: geometry.coordinates.map(line =>
                 line.map(rotatePoint)
               )
+            };
+          case "GeometryCollection":
+            return {
+              ...geometry,
+              geometries: geometry.geometries.map(g => rotateCoords(g))
             };
           default:
             return geometry;
@@ -560,7 +628,7 @@ export default (L, Plugin, Logger) => {
       }
 
       // Clean up layers
-      const layers = [this.layer, this.roadLayer, this.roadOverlayLayer, this.labelLayer];
+      const layers = [this.layer, this.roadLayer, this.roadOverlayLayer, this.mowPathLayer, this.rtk_and_dock, this.labelLayer];
       layers.forEach(layer => {
         if (layer) {
           try {
@@ -575,6 +643,8 @@ export default (L, Plugin, Logger) => {
       this.layer = null;
       this.roadLayer = null;
       this.roadOverlayLayer = null;
+      this.mowPathLayer = null;
+      this.rtk_and_dock = null;
       this.labelLayer = null;
       this._labelMarkers = null;
       this._updateRoadStyle = null;
