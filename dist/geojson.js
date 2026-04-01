@@ -93,7 +93,11 @@ export default (L, Plugin, Logger) => {
 
           if (mowPathGeoJsonData) {
             this.mowPathLayer = L.geoJSON(mowPathGeoJsonData, {
-              style: feature => this._getFeatureStyle(feature)
+              style: feature => {
+                const style = this._getFeatureStyle(feature) || {};
+                style.weight = 1; // Render thin lines for mow path
+                return style;
+              }
             });
             this.mowPathLayer.addTo(this.map);
             Logger.debug("[GeoJsonLoader] Mow Path Layer added successfully");
