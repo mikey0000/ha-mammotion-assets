@@ -5,6 +5,7 @@ export default (L, Plugin, Logger) => {
       this.layer = null;
       this.labelLayer = null;
       this._isMounted = false;
+      this._mowProgressInterval = null;
       this.hass = document.querySelector('home-assistant').hass;
       this._rotatedMarkerPlugin();
     }
@@ -118,9 +119,58 @@ export default (L, Plugin, Logger) => {
             this._addTextLabels(geoJsonData);
           }
         }
+
+        this._mowProgressInterval = setInterval(() => this._refreshMowProgress(), 30000);
       } catch (error) {
         Logger.error("[GeoJsonLoader] Error:", error);
       }
+    }
+
+    async _refreshMowProgress() {
+      if (!this._isMounted) return;
+
+      const entityId = this.options.entity_id || this.options.entity;
+      let data = await this._loadMowPathGeoJsonData(entityId);
+      if (!data) return;
+
+      data = JSON.parse(JSON.stringify(data));
+
+      const offsetLat = Number(this.options.offset_lat) || 0;
+      const offsetLon = Number(this.options.offset_lon) || 0;
+      if (offsetLat !== 0 || offsetLon !== 0) {
+        data = this._offsetGeoJson(data, offsetLat, offsetLon);
+      }
+
+      const rotationDeg = Number(this.options.rotation_deg) || 0;
+      if (rotationDeg !== 0) {
+        let originLat = this.options.rotation_origin_lat != null ? Number(this.options.rotation_origin_lat) : null;
+        let originLon = this.options.rotation_origin_lon != null ? Number(this.options.rotation_origin_lon) : null;
+        if (originLat == null || originLon == null) {
+          const center = this._getGeoJsonCenter(data);
+          originLat = center.lat;
+          originLon = center.lon;
+        }
+        if (originLat != null && originLon != null) {
+          data = this._rotateGeoJson(data, rotationDeg, originLat, originLon);
+        }
+      }
+
+      if (!this._isMounted) return;
+
+      if (this.mowPathLayer) {
+        try { this.mowPathLayer.remove(); } catch (e) {}
+        this.mowPathLayer = null;
+      }
+
+      this.mowPathLayer = L.geoJSON(data, {
+        style: feature => {
+          const style = this._getFeatureStyle(feature) || {};
+          style.weight = 1;
+          return style;
+        }
+      });
+      this.mowPathLayer.addTo(this.map);
+      Logger.debug("[GeoJsonLoader] Mow progress layer refreshed");
     }
 
     async _loadGeoJsonData(entityId) {
@@ -166,7 +216,7 @@ export default (L, Plugin, Logger) => {
 
         const response = await hass.callService(
           "mammotion",
-          "get_mow_path_geojson",
+          "get_mow_progress_geojson",
           serviceData,
           {},
           true,
@@ -174,7 +224,7 @@ export default (L, Plugin, Logger) => {
         );
         return response?.response || null;
       } catch (error) {
-        Logger.warn("[GeoJsonLoader] Load error (get_mow_path_geojson): " + (error.message || error));
+        Logger.warn("[GeoJsonLoader] Load error (get_mow_progress_geojson): " + (error.message || error));
         return null;
       }
     }
@@ -625,6 +675,11 @@ export default (L, Plugin, Logger) => {
 
     destroy() {
       this._isMounted = false;
+
+      if (this._mowProgressInterval) {
+        clearInterval(this._mowProgressInterval);
+        this._mowProgressInterval = null;
+      }
 
       // Remove event listeners
       if (this.map && this._updateRoadStyle) {
