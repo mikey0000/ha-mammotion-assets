@@ -10,6 +10,15 @@ export default (L, Plugin, Logger) => {
       this._rotatedMarkerPlugin();
     }
 
+    isEmpty(obj) {
+      for (const prop in obj) {
+        if (Object.hasOwn(obj, prop)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
     async renderMap() {
       try {
         Logger.debug("[GeoJsonLoader] Initializing plugin");
@@ -188,7 +197,7 @@ export default (L, Plugin, Logger) => {
           true,
           true
         );
-        return response?.response || null;
+        return isEmpty(response?.response) ? null : response?.response;
       } catch (error) {
         Logger.warn("[GeoJsonLoader] Load error (get_geojson): " + (error.message || error));
         return null;
@@ -222,7 +231,7 @@ export default (L, Plugin, Logger) => {
           true,
           true
         );
-        return response?.response || null;
+        return isEmpty(response?.response) ? null : response?.response;
       } catch (error) {
         Logger.warn("[GeoJsonLoader] Load error (get_mow_progress_geojson): " + (error.message || error));
         return null;
