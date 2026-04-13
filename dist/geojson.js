@@ -197,7 +197,7 @@ export default (L, Plugin, Logger) => {
           true,
           true
         );
-        return isEmpty(response?.response) ? null : response?.response;
+        return this.isEmpty(response?.response) ? null : response?.response;
       } catch (error) {
         Logger.warn("[GeoJsonLoader] Load error (get_geojson): " + (error.message || error));
         return null;
@@ -231,7 +231,7 @@ export default (L, Plugin, Logger) => {
           true,
           true
         );
-        return isEmpty(response?.response) ? null : response?.response;
+        return this.isEmpty(response?.response) ? null : response?.response;
       } catch (error) {
         Logger.warn("[GeoJsonLoader] Load error (get_mow_progress_geojson): " + (error.message || error));
         return null;
