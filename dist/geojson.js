@@ -38,14 +38,6 @@ export default (L, Plugin, Logger) => {
 
         if ((!geoJsonData && !mowPathGeoJsonData) || !this._isMounted) return;
 
-        const offsetLat = Number(this.options.offset_lat) || 0;
-        const offsetLon = Number(this.options.offset_lon) || 0;
-        if (offsetLat !== 0 || offsetLon !== 0) {
-          if (geoJsonData) geoJsonData = this._offsetGeoJson(geoJsonData, offsetLat, offsetLon);
-          if (mowPathGeoJsonData) mowPathGeoJsonData = this._offsetGeoJson(mowPathGeoJsonData, offsetLat, offsetLon);
-          Logger.debug(`[GeoJsonLoader] Applied offset: ${offsetLat}m north/south, ${offsetLon}m east/west`);
-        }
-
         const rotationDeg = Number(this.options.rotation_deg) || 0;
         if (rotationDeg !== 0) {
           let originLat = this.options.rotation_origin_lat != null ? Number(this.options.rotation_origin_lat) : null;
@@ -143,12 +135,6 @@ export default (L, Plugin, Logger) => {
       if (!data) return;
 
       data = JSON.parse(JSON.stringify(data));
-
-      const offsetLat = Number(this.options.offset_lat) || 0;
-      const offsetLon = Number(this.options.offset_lon) || 0;
-      if (offsetLat !== 0 || offsetLon !== 0) {
-        data = this._offsetGeoJson(data, offsetLat, offsetLon);
-      }
 
       const rotationDeg = Number(this.options.rotation_deg) || 0;
       if (rotationDeg !== 0) {
@@ -341,70 +327,6 @@ export default (L, Plugin, Logger) => {
       style.id = 'geojson-lawnmower-style';
       style.innerHTML = css;
       document.head.appendChild(style);
-    }
-
-    _offsetGeoJson(geojson, offsetLatMeters, offsetLonMeters) {
-      const degPerMeterLat = 1 / 111320; // ~1 deg latitude = 111.32 km
-      const offsetLat = offsetLatMeters * degPerMeterLat;
-
-      // Convert lon offset depends on latitude
-      const applyOffset = (coords, latRef) => {
-        const degPerMeterLon = 1 / (111320 * Math.cos(latRef * Math.PI / 180));
-        const offsetLon = offsetLonMeters * degPerMeterLon;
-        return [coords[0] + offsetLon, coords[1] + offsetLat];
-      };
-
-      const offsetCoords = (geometry) => {
-        if (!geometry) return geometry;
-        switch (geometry.type) {
-          case "Point":
-            return { ...geometry, coordinates: applyOffset(geometry.coordinates, geometry.coordinates[1]) };
-          case "LineString":
-            return { ...geometry, coordinates: geometry.coordinates.map(c => applyOffset(c, c[1])) };
-          case "Polygon":
-            return {
-              ...geometry,
-              coordinates: geometry.coordinates.map(ring =>
-                ring.map(c => applyOffset(c, c[1]))
-              )
-            };
-          case "MultiPolygon":
-            return {
-              ...geometry,
-              coordinates: geometry.coordinates.map(poly =>
-                poly.map(ring => ring.map(c => applyOffset(c, c[1])))
-              )
-            };
-          case "MultiLineString":
-            return {
-              ...geometry,
-              coordinates: geometry.coordinates.map(line =>
-                line.map(c => applyOffset(c, c[1]))
-              )
-            };
-          case "GeometryCollection":
-            return {
-              ...geometry,
-              geometries: geometry.geometries.map(g => offsetCoords(g))
-            };
-          default:
-            return geometry;
-        }
-      };
-
-      if (geojson.type === "FeatureCollection") {
-        return {
-          ...geojson,
-          features: geojson.features.map(f => ({
-            ...f,
-            geometry: offsetCoords(f.geometry)
-          }))
-        };
-      } else if (geojson.type === "Feature") {
-        return { ...geojson, geometry: offsetCoords(geojson.geometry) };
-      } else {
-        return offsetCoords(geojson);
-      }
     }
 
     _rotateGeoJson(geojson, rotationDeg, originLat, originLon) {
