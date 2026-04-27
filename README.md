@@ -18,3 +18,4 @@ Or manually:
 - Images for displaying your mower on a map
 - Images for RTK and dock
 - `geojson.js` — renders GeoJSON along with map names and areas
+- Optional agora-client.js for displaying camera feed with movement controls
