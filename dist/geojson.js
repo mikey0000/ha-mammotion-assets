@@ -121,7 +121,7 @@ export default (L, Plugin, Logger) => {
           }
         }
 
-        this._mowProgressInterval = setInterval(() => this._refreshMowProgress(), 30000);
+        this._mowProgressInterval = setInterval(() => this._refreshMowProgress(), 180000);
       } catch (error) {
         Logger.error("[GeoJsonLoader] Error:", error);
       }
@@ -232,7 +232,7 @@ export default (L, Plugin, Logger) => {
         const area = props.area != null ? Math.ceil(props.area) : null;
 
         // If there's nothing to show, don't bind a popup
-        if (!name && area == null) return;
+        if (!name && area == null || ["obstacle", "path"].includes(props.type_name)) return;
 
         const content = this._createPopupContent({ name, area, type: props.type_name, props });
 
