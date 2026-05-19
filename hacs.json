@@ -1,5 +1,5 @@
 {
     "name": "Mammotion Assets",
     "render_readme": true,
-    "filename": "dist/geojson.js"
+    "filename": "geojson.js"
 }
