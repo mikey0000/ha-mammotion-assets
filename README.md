@@ -17,7 +17,7 @@ Or manually:
 - Images for the custom mower card
 - Images for displaying your mower on a map
 - Images for RTK and dock
-- `geojson.js` — renders GeoJSON along with map names and areas
+- `geojson.js` — renders GeoJSON along with map names and areas (also available as a standalone plugin: [ha-mammotion-geojson-map-plugin](https://github.com/mikey0000/ha-mammotion-geojson-map-plugin))
 - Optional agora-client.js for displaying camera feed with movement controls
 
 ## Mammotion SVG Pick and Place Card
